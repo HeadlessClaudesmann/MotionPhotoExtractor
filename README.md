@@ -195,6 +195,10 @@ py -m pip show motionextract
 If that says `WARNING: Package(s) not found`, the install didn't happen. Go back
 to [Step 2](#step-2--install-the-tool) and watch the output for errors.
 
+> Getting `ERROR: unknown command "motionextract"` instead? The word `show` is
+> missing. Without it pip reads `motionextract` as an instruction to itself
+> rather than a package name to look up.
+
 **If it is installed, this works right now, regardless of PATH:**
 
 ```powershell
@@ -204,28 +208,72 @@ py -m motionextract
 All the same options work — `py -m motionextract -r`, `py -m motionextract --dry-run`,
 and so on. If you're happy typing that, you're done; everything below is optional.
 
-**To get the short `motionextract` command working**, its folder needs to be on
-your PATH. The `pip show` output above tells you where it is — look at the
-`Location:` line:
+---
+
+#### Optional: getting the short `motionextract` command to work
+
+Only worth doing if typing `py -m ` each time annoys you. It takes two minutes.
+
+The problem is that pip put `motionextract.exe` in a folder Windows doesn't
+search. The fix is to tell Windows to search it.
+
+**1. Find the folder.**
+
+Look at the `Location:` line from the `pip show` command you ran above:
 
 ```
 Location: C:\Users\you\AppData\Roaming\Python\Python314\site-packages
 ```
 
-Swap `site-packages` for `Scripts` and that's your folder. Confirm it:
+Change the last part from `site-packages` to `Scripts`. That's your folder:
+
+```
+C:\Users\you\AppData\Roaming\Python\Python314\Scripts
+```
+
+Confirm the program is really in there — this should list one file, not error:
 
 ```powershell
 dir "C:\Users\you\AppData\Roaming\Python\Python314\Scripts\motionextract.exe"
 ```
 
-Now add that folder to your PATH. **Via the GUI**, which is the safer route:
+Copy that folder path (without the `\motionextract.exe` on the end). You'll
+paste it in a moment.
 
-1. Press Start, type `environment`, choose **"Edit environment variables for your account"**
-2. Select **Path** in the top box, then **Edit** → **New**
-3. Paste the folder path
-4. **OK** on every dialog
+**2. Add it to your PATH.**
 
-Or **via PowerShell** — this version won't create a duplicate if you run it twice:
+1. Press the **Start** key and type `environment`
+2. Click **"Edit environment variables for your account"**
+3. A window opens with two lists. You want the **top** one, headed
+   **"User variables for \<your name\>"** — leave the bottom "System variables"
+   list alone
+4. Click the row named **Path** in that top list, then click **Edit...**
+5. In the new window, click **New**, and paste your folder path into the blank
+   row that appears
+6. Click **OK**. Then click **OK** on the window behind it too — both need
+   closing with OK or the change is discarded
+
+> **No `Path` row in the top list?** That's fine, some accounts don't have one.
+> Click **New...** instead of Edit, enter `Path` as the variable name and your
+> folder as the value, then OK.
+
+**3. Check it worked.**
+
+**Close PowerShell completely and open a new window.** This is the step people
+miss — PATH changes only reach programs started afterwards, so the window you
+already have open will keep failing no matter what you did.
+
+```powershell
+motionextract --version
+```
+
+That should now print a version number, and `motionextract` works from any
+folder.
+
+<details>
+<summary>Prefer to do it from PowerShell instead?</summary>
+
+This does the same thing. It won't create a duplicate entry if you run it twice.
 
 ```powershell
 $dir = "C:\paste\your\Scripts\folder\here"
@@ -233,20 +281,21 @@ $old = [Environment]::GetEnvironmentVariable('PATH','User')
 if ($old -split ';' -notcontains $dir) {
   $new = if ([string]::IsNullOrEmpty($old)) { $dir } else { "$old;$dir" }
   [Environment]::SetEnvironmentVariable('PATH', $new, 'User')
-  "Added - restart PowerShell"
+  "Added - now close and reopen PowerShell"
 } else { "Already there" }
 ```
 
-> If your user PATH contains entries written with variables like
-> `%USERPROFILE%\...`, the PowerShell route permanently expands them into literal
-> paths. It's harmless in practice, but the GUI route avoids it entirely.
+One caveat the GUI route doesn't have: if your existing user PATH contains
+entries written with variables like `%USERPROFILE%\...`, reading and rewriting
+it this way permanently replaces them with literal paths. Harmless in practice,
+but it's why the GUI is suggested first.
 
-**Close and reopen PowerShell** — PATH changes only apply to new windows. Then
-`motionextract --version` should work.
+</details>
 
-> pip also prints a yellow `WARNING: The script motionextract.exe is installed in
-> '...' which is not on PATH` line during Step 2, naming the exact folder. If that
-> output is still on screen, you can take the path straight from there.
+> **Shortcut:** pip prints a yellow `WARNING: The script motionextract.exe is
+> installed in '...' which is not on PATH` line during Step 2, naming the folder
+> outright. If that output is still in your scrollback, take the path from there
+> and skip straight to part 2.
 
 **Alternative** — `pipx` manages PATH for you and keeps the tool isolated:
 
