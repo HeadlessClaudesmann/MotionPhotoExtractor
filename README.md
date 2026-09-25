@@ -80,7 +80,7 @@ You'll see a few lines of output ending in `Successfully installed motionextract
 motionextract --version
 ```
 
-You should see `motionextract 2.0.0`.
+You should see `motionextract 2.1.0` (or higher).
 
 If you get "not recognized" on Windows, don't worry — the tool installed fine,
 Windows just can't see it yet. This always works instead:
