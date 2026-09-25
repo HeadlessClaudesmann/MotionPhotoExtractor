@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "motionextract"
+dynamic = ["version"]
+description = "Extract the embedded MP4 video from Google Pixel motion photos."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "The Headless Claudesmann", email = "headlessclaudesmann@gmail.com" }]
+keywords = ["pixel", "motion photo", "jpeg", "mp4", "extract", "android"]
+classifiers = [
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Video",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/HeadlessClaudesmann/MotionPhotoExtractor"
+Issues = "https://github.com/HeadlessClaudesmann/MotionPhotoExtractor/issues"
+
+[project.scripts]
+motionextract = "motionextract.cli:main"
+
+[project.gui-scripts]
+motionextract-gui = "motionextract.gui:main"
+
+[tool.hatch.version]
+path = "motionextract/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["motionextract"]
