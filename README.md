@@ -80,7 +80,18 @@ You'll see a few lines of output ending in `Successfully installed motionextract
 motionextract --version
 ```
 
-You should see `motionextract 2.0.0`. If you get "not recognized", see [Troubleshooting](#troubleshooting) — it's a known Windows quirk with a one-line fix.
+You should see `motionextract 2.0.0`.
+
+If you get "not recognized" on Windows, don't worry — the tool installed fine,
+Windows just can't see it yet. This always works instead:
+
+```powershell
+py -m motionextract --version
+```
+
+You can use `py -m motionextract` everywhere this guide says `motionextract`, or
+see [Troubleshooting](#motionextract-is-not-recognized-windows) to get the short
+command working.
 
 ## Step 3 — Run it
 
@@ -172,17 +183,55 @@ Re-run the python.org installer, choose **Modify**, and make sure **"Add python.
 
 ### "motionextract is not recognized" (Windows)
 
-Python installed fine, but its `Scripts` folder isn't on your PATH. Two options:
+This is the most common hiccup, and it's cosmetic — Python and the tool are
+almost certainly fine. Work through it in order.
 
-**Quickest fix** — run it as a module instead. Works regardless of PATH:
+**First, check it's actually installed:**
 
 ```powershell
-py -m motionextract.cli
+py -m pip show motionextract
 ```
 
-All the same options work: `py -m motionextract.cli -r --dry-run`
+If that says `WARNING: Package(s) not found`, the install didn't happen. Go back
+to [Step 2](#step-2--install-the-tool) and watch the output for errors.
 
-**Proper fix** — install via `pipx`, which handles PATH for you:
+**If it is installed, this works right now, regardless of PATH:**
+
+```powershell
+py -m motionextract
+```
+
+All the same options work — `py -m motionextract -r`, `py -m motionextract --dry-run`,
+and so on. If you're happy typing that, you're done; everything below is optional.
+
+**To get the short `motionextract` command working**, its folder needs to be on
+your PATH. Find out where it went:
+
+```powershell
+py -c "import sysconfig; print(sysconfig.get_path('scripts','nt_user'))"
+py -c "import sysconfig; print(sysconfig.get_path('scripts'))"
+```
+
+One of those two folders contains `motionextract.exe`. Check with
+`dir "<folder>\motionextract.exe"`. Then add it to your PATH permanently:
+
+```powershell
+$dir = "C:\paste\the\folder\here"
+[Environment]::SetEnvironmentVariable(
+  'PATH',
+  [Environment]::GetEnvironmentVariable('PATH','User') + ";$dir",
+  'User'
+)
+```
+
+**Close and reopen PowerShell**, then `motionextract --version` should work.
+
+> When pip installs a command into a folder that isn't on your PATH, it prints a
+> yellow `WARNING: The script motionextract.exe is installed in '...' which is not
+> on PATH` line during Step 2. If you still have that output on screen, it names
+> the exact folder and you can skip the two lookup commands above.
+
+**Alternative** — `pipx` manages PATH for you and keeps the tool isolated:
 
 ```powershell
 py -m pip install --user pipx
@@ -277,11 +326,11 @@ It shares the same extraction engine. The command line version is the better-tes
 If you'd rather not install anything, download the repo as a ZIP from GitHub, extract it, open a terminal in that folder and run:
 
 ```powershell
-py -m motionextract.cli "C:\path\to\photos"
+py -m motionextract "C:\path\to\photos"
 ```
 
 ```bash
-python3 -m motionextract.cli ~/path/to/photos
+python3 -m motionextract ~/path/to/photos
 ```
 
 ## Uninstalling
