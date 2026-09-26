@@ -430,7 +430,7 @@ Detected automatically — you don't need to know which kind you have.
 |--------|---------|-------------|
 | **Google, new** | Pixel 6+, and most Android makers that copied it | Reads `GCamera:MotionPhoto` + `Container:Directory` from the XMP at the start of the file |
 | **Google, old** | Earlier Pixels | Reads the `MicroVideoOffset` attribute from the same XMP |
-| **Samsung** | Galaxy, newer models | Reads the SEF index Samsung appends to the *end* of the file |
+| **Samsung** | Galaxy, newer models | Reads the SEF index Samsung appends to the *end* of the file, in any of the ways it types a clip |
 | **Fallback** | Everything else | Finds the appended MP4 by its own box markers, and follows the box sizes to where the clip ends |
 
 The fallback is what makes an unfamiliar phone work: a photo that doesn't end where a JPEG should is carrying something extra, and a clip is the usual reason. So a manufacturer this tool has never seen still works, as long as it appends the video like the rest of them.
@@ -439,7 +439,9 @@ The fallback is what makes an unfamiliar phone work: a photo that doesn't end wh
 
 ## Which phones
 
-Google Pixel is the one tested against real photos. Samsung Galaxy is supported and covered by tests, but those tests are built from files constructed to match published descriptions of Samsung's format rather than from photos off a Galaxy — so if you have one, a report either way is genuinely useful.
+Google Pixel is the one tested against real photos. Samsung Galaxy is supported and covered by tests, but those tests are built from files constructed to match the format rather than from photos off a Galaxy — so if you have one, a report either way is genuinely useful.
+
+Samsung's format has never been published by Samsung. What this tool follows is [ExifTool's Samsung tag table](https://github.com/exiftool/exiftool/blob/master/lib/Image/ExifTool/Samsung.pm), which was assembled from a very large number of real files and is the nearest thing to a specification that exists. Three of its block types hold a clip — the plain embedded video, the autoplay variant some models write instead, and Surround Shot — and a fourth records only a version number while still telling you the photo is a motion photo. All four are handled.
 
 Manufacturers that followed Google's format should work through the same path as a Pixel: Motorola (*Active Photos*), OnePlus (*Live Photos*), Xiaomi, and others. If your phone appends the clip but records the fact some other way entirely, the fallback should still find it. Either way there is nothing to configure — the tool works out which it's looking at.
 

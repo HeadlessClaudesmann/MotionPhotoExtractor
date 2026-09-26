@@ -59,13 +59,37 @@ TRAILER_BYTES = 65_536
 TAIL_SEARCH_BYTES = 16_777_216
 
 # Samsung's markers. The SEF ("Samsung Extended Format") index is bracketed by
-# SEFH and SEFT, with SEFT the last four bytes of the file. Within it, records
-# of type 0x0a30 describe the embedded clip, and the block each record points at
-# opens with the name below.
+# SEFH and SEFT, with SEFT the last four bytes of the file. Each record names a
+# block by type, and the block it points at opens with the name below.
 SAMSUNG_VIDEO_MARKER = b'MotionPhoto_Data'
 SEF_HEAD = b'SEFH'
 SEF_TAIL = b'SEFT'
-SEF_MOTION_PHOTO_TYPE = 0x0a30
+
+# The block types that hold a video, taken from ExifTool's Samsung tag table --
+# assembled from far more real files than this project will ever see, and the
+# nearest thing the format has to documentation:
+#   0x0a30  EmbeddedVideoFile         the motion photo clip
+#   0x0a33  MotionPhotoAutoPlayVideo  the same thing, as some models label it
+#   0x0201  SurroundShotVideo         a different camera feature, still a clip
+SEF_VIDEO_TYPES = frozenset((0x0a30, 0x0a33, 0x0201))
+
+# Blocks of these types hold a still image, Sound & Shot's audio, the second
+# camera's frame or a depth map. They can be large, so naming them keeps a big
+# block of something that is definitely not video from being probed as if it
+# might be.
+SEF_NON_VIDEO_TYPES = frozenset((0x0001, 0x0100, 0x0a20, 0x0ab1, 0x0b41))
+
+# A record of this type carries only a version number, but its presence says the
+# photo is a motion photo -- useful when nothing else in the index is readable.
+SEF_MOTION_PHOTO_VERSION_TYPE = 0x0a31
+
+# A video block shorter than this is not the clip. ExifTool documents a variant
+# where a 0x0a30 block holds a pointer to the clip instead of the clip itself --
+# four bytes to skip, then a big-endian offset and size -- and no account we have
+# found says what that offset is measured from. So it is not followed. What
+# matters is that such a record still promises a clip, which sends us to the scan
+# rather than letting the file pass as an ordinary photo.
+SEF_POINTER_BLOCK_MAXIMUM = 256
 
 # How much of the start of a vendor's block is read to find the clip's opening
 # box. The block begins with a short header naming it, so the MP4 starts within a
@@ -305,17 +329,18 @@ def samsung_video_candidates(
     them all. The exact start is pinned afterwards by looking for the opening box,
     which keeps a misreading of the index costing speed rather than correctness.
 
-    The block the index names as the motion photo comes first. Any other block
-    large enough to be a video follows it, because the type codes have no public
-    specification and a model we have not seen may number its clip differently;
-    checking a candidate costs one small read, which is worth spending before
-    falling back to scanning the whole file.
+    The blocks the index types as video come first. Any other block large enough
+    to be a video follows them, because the type codes are documented only by
+    reverse engineering and a model we have not seen may number its clip
+    differently; checking a candidate costs one small read, which is worth
+    spending before falling back to scanning the whole file.
 
     Returns absolute (start, stop) pairs, best candidate first, and whether the
-    index actually named one of them as a motion photo -- that second answer is
-    what separates a promise of video from a guess at it. Returns None instead if
-    there is no SEF index here at all, which is a different thing from an index
-    that lists no clip.
+    index promised a clip at all -- that second answer is what separates a promise
+    of video from a guess at it, and it can be true with no candidates to offer:
+    a record may say a clip exists without giving a usable region for it. Returns
+    None instead if there is no SEF index here, which is a different thing from an
+    index that lists no clip.
     """
     parsed = _sef_index(trailer)
     if parsed is None:
@@ -324,17 +349,32 @@ def samsung_video_candidates(
     index, records = parsed
     index_pos = filesize - (len(trailer) - index)
 
-    named, sized = [], []
+    named, sized, asserted = [], [], False
     for kind, back, length in records:
         start = index_pos - back
-        if length < MIN_VIDEO_BYTES or start < 0 or start + length > index_pos:
+
+        # This one names no region, it just says the photo is a motion photo.
+        if kind == SEF_MOTION_PHOTO_VERSION_TYPE:
+            asserted = True
             continue
-        if kind == SEF_MOTION_PHOTO_TYPE:
-            named.append((start, start + length))
-        elif length >= SEF_VIDEO_BLOCK_MINIMUM:
+
+        if start < 0 or start + length > index_pos:
+            continue
+
+        if kind in SEF_VIDEO_TYPES:
+            # Set before the size is judged, and this is the point: a record
+            # typed as video promises a clip whether or not its block is one we
+            # can use. A block too short to be a clip is the pointer variant, and
+            # a promise we cannot follow still has to beat reporting the file as
+            # an ordinary photo, so it goes to the scan instead.
+            asserted = True
+            if length > SEF_POINTER_BLOCK_MAXIMUM:
+                named.append((start, start + length))
+        elif (length >= SEF_VIDEO_BLOCK_MINIMUM
+                and kind not in SEF_NON_VIDEO_TYPES):
             sized.append((start, start + length))
 
-    return named + sized, bool(named)
+    return named + sized, asserted
 
 
 def has_google_markers(data: bytes) -> bool:

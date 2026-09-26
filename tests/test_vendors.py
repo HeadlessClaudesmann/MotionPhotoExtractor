@@ -77,6 +77,12 @@ class TestGoogleConvention(VendorCase):
 
 class TestSamsung(VendorCase):
 
+    # Bigger than HEADER_BYTES, so that the trailer sits outside the window read
+    # from the head of the file. Without that, a fixture small enough to fit
+    # entirely inside that window can be read by a strategy meant for a different
+    # vendor, and a test proves less than it appears to.
+    BIG_BODY = 200_000
+
     def test_sef_index_locates_the_clip(self) -> None:
         self.assert_recovers_clip(fixtures.samsung_motion_photo(self.video))
 
@@ -122,6 +128,77 @@ class TestSamsung(VendorCase):
     def test_a_trailer_without_a_clip_is_an_ordinary_photo(self) -> None:
         """Samsung writes a trailer for other camera features too."""
         self.assert_reads_as_plain_photo(fixtures.samsung_sound_shot())
+
+    def test_every_documented_video_type_is_recovered(self) -> None:
+        """
+        A clip is a clip whichever of the three codes types it.
+
+        ExifTool's tag table names three: the plain embedded video, the autoplay
+        variant some models write instead, and Surround Shot. The block name is
+        varied along with the type so that it is the type code doing the work here
+        -- keying on the name would make this pass for the wrong reason.
+
+        The body is deliberately bigger than the head window. A small fixture puts
+        the whole file inside that window, where a name like MotionPhoto_AutoPlay
+        is close enough to Google's marker to be found by the wrong strategy
+        entirely -- which is how this test first passed against code that could not
+        read the type at all.
+        """
+        for kind, name in (
+                (fixtures.SEF_MOTION_PHOTO_TYPE, b'MotionPhoto_Data'),
+                (fixtures.SEF_AUTOPLAY_VIDEO_TYPE, b'MotionPhoto_AutoPlay'),
+                (fixtures.SEF_SURROUND_SHOT_TYPE, b'SurroundShot_Data')):
+            with self.subTest(type=hex(kind)):
+                self.assert_recovers_clip(fixtures.samsung_sef(
+                    [(fixtures.SEF_TIMESTAMP_TYPE, b'Image_UTC_Data', b'1758844800'),
+                     (kind, name, self.video)], body_size=self.BIG_BODY))
+
+    def test_a_pointer_block_still_yields_the_clip(self) -> None:
+        """
+        A clip block holding a pointer rather than the clip is still a promise.
+
+        The pointer is not followed -- no account says what its offset is measured
+        from -- so the region the index offers is too small to be a clip and the
+        scan has to earn the answer instead. What must not happen is the file
+        passing as an ordinary photo.
+        """
+        self.assert_recovers_clip(
+            fixtures.samsung_pointer_variant(self.video, body_size=self.BIG_BODY))
+
+    def test_a_version_record_alone_promises_a_clip(self) -> None:
+        """
+        The version record names no region, but its presence says motion photo.
+
+        Nothing else in this index points at the clip, so this passes only if that
+        one record is enough to send us looking.
+        """
+        self.assert_recovers_clip(fixtures.samsung_sef(
+            [(fixtures.SEF_MOTION_PHOTO_VERSION_TYPE, b'MotionPhoto_Version', b'1')],
+            body_size=self.BIG_BODY, prefix=self.video))
+
+    def test_a_promise_with_no_clip_anywhere_fails_loudly(self) -> None:
+        """
+        An index that says motion photo and has no clip is a file we cannot read.
+
+        Returning None here would report a motion photo as an ordinary photo,
+        which is the one outcome worth raising over.
+        """
+        data = fixtures.samsung_sef(
+            [(fixtures.SEF_MOTION_PHOTO_VERSION_TYPE, b'MotionPhoto_Version', b'1')],
+            body_size=self.BIG_BODY)
+        with self.assertRaises(ExtractionError):
+            find_video_in_file(self.photo(data))
+
+    def test_audio_is_not_mistaken_for_a_clip(self) -> None:
+        """
+        Sound & Shot's audio is large, and being typed as audio has to rule it out.
+
+        Without the type check a block this size would be probed as possible video
+        -- harmless, but it is the kind of guess that gets less harmless as more
+        block types turn up.
+        """
+        self.assert_reads_as_plain_photo(
+            fixtures.samsung_sound_shot(audio_size=1_048_576))
 
 
 class TestUnknownVendors(VendorCase):

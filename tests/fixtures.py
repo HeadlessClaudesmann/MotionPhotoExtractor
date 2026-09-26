@@ -84,6 +84,13 @@ SEF_TAIL = b'SEFT'
 SEF_MOTION_PHOTO_TYPE = 0x0a30
 SEF_TIMESTAMP_TYPE = 0x0a01
 
+# The other types ExifTool's tag table names, for the layouts below. Two more
+# ways a clip can be typed, and two things that are emphatically not a clip.
+SEF_AUTOPLAY_VIDEO_TYPE = 0x0a33
+SEF_SURROUND_SHOT_TYPE = 0x0201
+SEF_MOTION_PHOTO_VERSION_TYPE = 0x0a31
+SEF_AUDIO_TYPE = 0x0100
+
 
 def sef_block(kind: int, name: bytes, payload: bytes) -> bytes:
     """
@@ -95,7 +102,8 @@ def sef_block(kind: int, name: bytes, payload: bytes) -> bytes:
     return b'\x00\x00' + struct.pack('<H', kind) + struct.pack('<I', len(name)) + name + payload
 
 
-def samsung_sef(blocks: list, body_size: int = 2048, offset_error: int = 0) -> bytes:
+def samsung_sef(blocks: list, body_size: int = 2048, offset_error: int = 0,
+                prefix: bytes = b'') -> bytes:
     """
     Newer Galaxy layout: a photo, then SEF blocks, then the index describing them.
 
@@ -104,8 +112,12 @@ def samsung_sef(blocks: list, body_size: int = 2048, offset_error: int = 0) -> b
     is present. `offset_error` shifts those distances, which stands in for us
     having misread a format that has no public specification -- extraction is
     expected to notice and fall back, not to trust it.
+
+    `prefix` is bytes sitting between the photo and the first indexed block, for
+    the layouts where something is appended that the index does not describe as a
+    block of its own.
     """
-    data, spans = b'', []
+    data, spans = prefix, []
     for kind, name, payload in blocks:
         block = sef_block(kind, name, payload)
         spans.append((kind, len(data), len(block)))
@@ -132,16 +144,38 @@ def samsung_motion_photo(video: bytes, body_size: int = 2048, offset_error: int 
     )
 
 
-def samsung_sound_shot(body_size: int = 2048) -> bytes:
+def samsung_sound_shot(body_size: int = 2048, audio_size: int = 262144) -> bytes:
     """
-    A Samsung trailer with no clip in it.
+    A Samsung trailer with no clip in it: Sound & Shot, which appends audio.
 
-    Samsung appends one for other camera features too, so the trailer alone must
-    not be taken as a promise of video -- this has to read as an ordinary photo
-    rather than as a motion photo we failed to extract.
+    Samsung writes a trailer for other camera features too, so the trailer alone
+    must not be taken as a promise of video -- this has to read as an ordinary
+    photo rather than as a motion photo we failed to extract. The audio block is
+    deliberately far bigger than the size at which an unrecognised block would be
+    probed as possible video, because being typed as audio is what has to rule it
+    out.
     """
-    return samsung_sef([(SEF_TIMESTAMP_TYPE, b'Image_UTC_Data', b'1758844800')],
-                       body_size=body_size)
+    return samsung_sef(
+        [(SEF_TIMESTAMP_TYPE, b'Image_UTC_Data', b'1758844800'),
+         (SEF_AUDIO_TYPE, b'Sound_Data', b'A' * audio_size)],
+        body_size=body_size)
+
+
+def samsung_pointer_variant(video: bytes, body_size: int = 2048) -> bytes:
+    """
+    The layout where the clip's block holds a pointer to it rather than the clip.
+
+    ExifTool documents a 0x0a30 block whose value is twelve bytes -- four to skip,
+    then a big-endian offset and size. Nothing we have found says what that offset
+    is measured from, so this fixture appends the clip ahead of the blocks and
+    leaves the pointer deliberately unhelpful. The record still says a clip is
+    here, and finding it is what must not be skipped.
+    """
+    pointer = b'\x00' * 4 + struct.pack('>I', 0) + struct.pack('>I', len(video))
+    return samsung_sef(
+        [(SEF_TIMESTAMP_TYPE, b'Image_UTC_Data', b'1758844800'),
+         (SEF_MOTION_PHOTO_TYPE, b'MotionPhoto_Data', pointer)],
+        body_size=body_size, prefix=video)
 
 
 def samsung_bare_marker(video: bytes, body_size: int = 2048) -> bytes:
