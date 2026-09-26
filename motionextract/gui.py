@@ -20,8 +20,9 @@ from tkinter import filedialog, scrolledtext, ttk
 from .core import (
     JPEG_EXTENSIONS,
     ExtractionError,
+    claim_output_path,
     collect_jpegs,
-    extract_video,
+    extract_to,
 )
 
 DEFAULT_OUTPUT_DIRNAME = 'extracted_videos'
@@ -92,11 +93,23 @@ def _worker(source: Path, output_dir: Path, recursive: bool, log_q: queue.Queue)
     log_q.put(('info', f'{len(jpegs)} JPEG(s) found\n'))
 
     extracted: list[Path] = []
-    skipped = failed = 0
+    # How many photos of each stem we have seen, so that two photos sharing a
+    # filename in a recursive run are told apart from work already finished.
+    seen: dict[str, int] = {}
+    skipped = already = failed = 0
 
     for jpeg in jpegs:
         try:
-            out = extract_video(jpeg, output_dir)
+            dest, already_done = claim_output_path(output_dir, jpeg.stem, seen)
+
+            if already_done:
+                already += 1
+                # Already on disk, so still worth offering in the playlist.
+                extracted.append(dest)
+                log_q.put(('skip', f'[==]  {jpeg.name}  ->  {dest.name} already exists'))
+                continue
+
+            out = extract_to(jpeg, dest)
             if out is None:
                 skipped += 1
                 log_q.put(('skip', f'[--]  {jpeg.name}'))
@@ -111,7 +124,9 @@ def _worker(source: Path, output_dir: Path, recursive: bool, log_q: queue.Queue)
             failed += 1
             log_q.put(('warn', f'[!!]  {jpeg.name}: {exc.strerror or exc}'))
 
-    tail = f'\nDone.  {len(extracted)} extracted   {skipped} skipped'
+    tail = f'\nDone.  {len(extracted) - already} extracted   {skipped} skipped'
+    if already:
+        tail += f'   {already} already done'
     if failed:
         tail += f'   {failed} failed'
     log_q.put(('info', tail))

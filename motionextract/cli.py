@@ -3,6 +3,8 @@ Command line interface.
 
 Run `motionextract` with no arguments in a folder of photos and it does the
 obvious thing: extracts every motion photo it finds into ./extracted_videos.
+Photos that have already been extracted are left alone, so running it again
+after adding a few new photos only does the new work.
 """
 
 from __future__ import annotations
@@ -15,8 +17,9 @@ from . import __version__
 from .core import (
     JPEG_EXTENSIONS,
     ExtractionError,
+    claim_output_path,
     collect_jpegs,
-    extract_video,
+    extract_to,
     find_video,
 )
 
@@ -63,6 +66,7 @@ def _build_parser() -> argparse.ArgumentParser:
             '  motionextract ~/Photos            a specific folder\n'
             '  motionextract -o same             save next to the originals\n'
             '  motionextract --dry-run           report what would happen, write nothing\n'
+            '  motionextract --overwrite         re-extract everything from scratch\n'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -76,6 +80,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         '--recursive', '-r', action='store_true',
         help='include subfolders')
+    parser.add_argument(
+        '--overwrite', action='store_true',
+        help='re-extract photos whose video is already present, replacing it '
+             '(default: leave already-extracted photos alone)')
     parser.add_argument(
         '--dry-run', action='store_true',
         help='list what would be extracted without writing any files')
@@ -114,12 +122,24 @@ def main(argv: list[str] | None = None) -> int:
     print(f'[>>] output: {output_dir}')
     if args.dry_run:
         print('[>>] dry run, nothing will be written')
+    if args.overwrite:
+        print('[>>] overwrite: existing videos will be replaced')
     print()
 
-    extracted = skipped = failed = 0
+    # How many photos of each stem we have seen, so that two photos sharing a
+    # filename in a recursive run are told apart from work already finished.
+    seen: dict[str, int] = {}
+    extracted = skipped = already = failed = 0
 
     for jpeg in jpegs:
         try:
+            dest, already_done = claim_output_path(output_dir, jpeg.stem, seen)
+
+            if already_done and not args.overwrite:
+                already += 1
+                print(f'  [==] {jpeg.name}  ->  {dest.name} already exists')
+                continue
+
             if args.dry_run:
                 found = find_video(jpeg.read_bytes())
                 if found is None:
@@ -127,18 +147,18 @@ def main(argv: list[str] | None = None) -> int:
                     print(f'  [--] {jpeg.name}')
                 else:
                     extracted += 1
-                    print(f'  [OK] {jpeg.name}  ->  would write '
-                          f'{len(found) / 1_048_576:.1f} MB')
+                    print(f'  [OK] {jpeg.name}  ->  would write {dest.name}  '
+                          f'({len(found) / 1_048_576:.1f} MB)')
                 continue
 
-            out_path = extract_video(jpeg, output_dir)
-            if out_path is None:
+            written = extract_to(jpeg, dest)
+            if written is None:
                 skipped += 1
                 print(f'  [--] {jpeg.name}')
             else:
                 extracted += 1
-                size_mb = out_path.stat().st_size / 1_048_576
-                print(f'  [OK] {jpeg.name}  ->  {out_path.name}  ({size_mb:.1f} MB)')
+                size_mb = written.stat().st_size / 1_048_576
+                print(f'  [OK] {jpeg.name}  ->  {written.name}  ({size_mb:.1f} MB)')
 
         except ExtractionError as exc:
             failed += 1
@@ -149,6 +169,8 @@ def main(argv: list[str] | None = None) -> int:
 
     verb = 'would extract' if args.dry_run else 'extracted'
     summary = f'\n[done] {extracted} video(s) {verb}, {skipped} non-motion JPEG(s) skipped'
+    if already:
+        summary += f', {already} already extracted'
     if failed:
         summary += f', {failed} failed'
     print(summary)

@@ -139,6 +139,7 @@ Reading the prefixes:
 | | |
 |---|---|
 | `[OK]` | Video extracted |
+| `[==]` | Already extracted on an earlier run — left alone |
 | `[--]` | Ordinary photo, no video inside — nothing to do |
 | `[!!]` | Something went wrong with that one file. The run keeps going |
 | `[>>]` | General information |
@@ -158,6 +159,7 @@ Run these from inside your photo folder.
 | Just one photo | `motionextract photo.jpg` |
 | Save videos somewhere else | `motionextract -o "D:\Videos"` |
 | Save videos next to the photos | `motionextract -o same` |
+| Re-extract everything from scratch | `motionextract --overwrite` |
 | Full list of options | `motionextract --help` |
 
 **Not sure what it'll do?** Run `motionextract --dry-run` first. It reports exactly what it would extract and writes nothing at all.
@@ -167,7 +169,7 @@ Run these from inside your photo folder.
 ## Good to know
 
 - **Your photos are never modified.** The tool only reads them.
-- **Running it twice is safe.** It won't overwrite existing videos — it adds `_2`, `_3` and so on.
+- **Running it again is cheap.** Photos it has already extracted are skipped, so after adding a few new shots you can just run it again and only the new ones get done. Use `--overwrite` if you want it to redo everything.
 - **Only `.jpg` and `.jpeg` files are touched.** Everything else in the folder is left alone.
 - **Quality is untouched.** The clip is copied out exactly as your phone recorded it. No re-encoding.
 
@@ -348,11 +350,25 @@ Videos are named after the photo they came from:
 PXL_20251130_140645906.MP.jpg  →  PXL_20251130_140645906.MP_video.mp4
 ```
 
-Run it again and existing files are preserved, not overwritten:
+Run it again and photos that already have a video are skipped, so nothing is
+duplicated and nothing is overwritten:
 
 ```
-PXL_20251130_140645906.MP_video.mp4
-PXL_20251130_140645906.MP_video_2.mp4
+> motionextract
+  [==] PXL_20251130_140645906.MP.jpg  ->  PXL_20251130_140645906.MP_video.mp4 already exists
+  [OK] PXL_20251206_091422310.MP.jpg  ->  PXL_20251206_091422310.MP_video.mp4  (2.2 MB)
+
+[done] 1 video(s) extracted, 44 non-motion JPEG(s) skipped, 3 already extracted
+```
+
+`--overwrite` re-extracts everything, replacing the existing videos in place.
+
+A `_2` suffix means something different: two photos in *different* subfolders
+share a filename, and `-r` puts all the videos in one place.
+
+```
+2024-Holiday\PXL_20240101_120000.MP.jpg  →  PXL_20240101_120000.MP_video.mp4
+2025-Wedding\PXL_20240101_120000.MP.jpg  →  PXL_20240101_120000.MP_video_2.mp4
 ```
 
 ## Exit codes
@@ -404,6 +420,18 @@ python3 -m motionextract ~/path/to/photos
 ```
 py -m pip uninstall motionextract
 ```
+
+## Running the tests
+
+From a clone of the repo. No test dependencies — it's all standard library.
+
+```bash
+python3 -m unittest discover -s tests -t .
+```
+
+The test photos are built byte by byte in `tests/fixtures.py` rather than
+committed as binaries, so the file layout each format produces is written out
+explicitly and can be read.
 
 ---
 

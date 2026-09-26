@@ -7,7 +7,7 @@ format handling only ever has to be made once.
 Three strategies are tried in order:
   new format  GCamera:MotionPhoto + Container:Directory, Item:Length per item
   old format  MicroVideoOffset attribute (older Pixel firmware)
-  fallback    backward scan for an MP4 box marker
+  fallback    locate the appended MP4 by its box markers
 """
 
 from __future__ import annotations
@@ -82,18 +82,44 @@ def find_video_old_format(data: bytes) -> bytes | None:
     return candidate if _looks_like_mp4(candidate) else None
 
 
+def _plausible_box_at(data: bytes, marker_pos: int) -> bool:
+    """
+    True if marker_pos is preceded by a credible 4-byte box size field.
+
+    Compressed JPEG data can contain a box marker's four bytes by chance. The
+    size field in front of a real box is a useful filter: per the MP4 spec it is
+    the box length, or 0 for "runs to end of file", or 1 for "64-bit size
+    follows the type".
+    """
+    if marker_pos < 4:
+        return False
+    start = marker_pos - 4
+    size = int.from_bytes(data[start:start + 4], 'big')
+    return size in (0, 1) or 8 <= size <= len(data) - start
+
+
 def find_video_fallback(data: bytes) -> bytes | None:
     """
-    Last resort, used when the XMP is absent or unparseable. Finds the last box
-    marker in the file via rfind rather than stepping back a byte at a time.
+    Last resort, used when the XMP is absent or unparseable.
+
+    An MP4 starts at its `ftyp` box, so that is what we anchor on. We take the
+    last one: the clip is appended after all of the JPEG data, so any stray
+    marker inside that data is necessarily earlier in the file.
+
+    Only when there is no `ftyp` at all do we settle for the outermost of the
+    remaining boxes. Anchoring on `mdat` -- which in a real clip sits after the
+    container header -- would silently truncate that header and produce an
+    unplayable file.
     """
-    best = -1
-    for box in MP4_BOX_TYPES:
-        pos = data.rfind(box)
-        if pos > best:
-            best = pos
-    # A box marker is preceded by its 4-byte length field.
-    return data[best - 4:] if best > 4 else None
+    ftyp = data.rfind(b'ftyp')
+    if ftyp >= 4 and _plausible_box_at(data, ftyp):
+        return data[ftyp - 4:]
+
+    fallbacks = [
+        pos for pos in (data.rfind(b'moov'), data.rfind(b'mdat'))
+        if pos >= 4 and _plausible_box_at(data, pos)
+    ]
+    return data[min(fallbacks) - 4:] if fallbacks else None
 
 
 def is_motion_photo(data: bytes) -> bool:
@@ -116,33 +142,54 @@ def find_video(data: bytes) -> bytes | None:
     return video
 
 
-def unique_output_path(out_dir: Path, stem: str) -> Path:
-    """<out_dir>/<stem>_video.mp4, with a counter suffix if that already exists."""
-    candidate = out_dir / f'{stem}_video.mp4'
-    counter = 2
-    while candidate.exists():
-        candidate = out_dir / f'{stem}_video_{counter}.mp4'
-        counter += 1
-    return candidate
+def planned_output_path(out_dir: Path, stem: str) -> Path:
+    """The name this photo's clip gets when nothing is in the way."""
+    return out_dir / f'{stem}_video.mp4'
 
 
-def extract_video(filepath: Path, output_dir: Path) -> Path | None:
+def claim_output_path(
+    out_dir: Path, stem: str, seen: dict[str, int],
+) -> tuple[Path, bool]:
     """
-    Extract one JPEG's embedded clip into output_dir.
+    Claim the destination for one photo's clip, and say whether it already exists.
 
-    Returns the written path, or None if the file simply isn't a motion photo.
-    Raises ExtractionError if it is one but the video can't be recovered, and
-    OSError if the file can't be read or the output can't be written.
+    Returns (destination, already_extracted).
+
+    `seen` counts how many photos with each stem the caller has processed so far,
+    and is updated here. The first photo with a given stem gets
+    `<stem>_video.mp4`, the second `<stem>_video_2.mp4`, and so on -- so two
+    different photos sharing a camera filename, as happens when a recursive run
+    flattens several subfolders, both get written.
+
+    Basing the suffix on position in the run rather than on the first free name
+    is what makes a second run a no-op: photos are visited in sorted order, so
+    each one claims the same destination every time and finds its own work
+    already done.
     """
-    data = filepath.read_bytes()
-    video = find_video(data)
+    occurrence = seen.get(stem, 0)
+    seen[stem] = occurrence + 1
+    dest = (
+        planned_output_path(out_dir, stem) if occurrence == 0
+        else out_dir / f'{stem}_video_{occurrence + 1}.mp4'
+    )
+    return dest, dest.exists()
+
+
+def extract_to(filepath: Path, dest: Path) -> Path | None:
+    """
+    Extract one JPEG's embedded clip to exactly `dest`, replacing it if present.
+
+    Returns `dest`, or None if the file simply isn't a motion photo. Raises
+    ExtractionError if it is one but the video can't be recovered, and OSError
+    if the file can't be read or the output can't be written.
+    """
+    video = find_video(filepath.read_bytes())
     if video is None:
         return None
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    out_path = unique_output_path(output_dir, filepath.stem)
-    out_path.write_bytes(video)
-    return out_path
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(video)
+    return dest
 
 
 def collect_jpegs(target: Path, recursive: bool) -> list[Path]:
