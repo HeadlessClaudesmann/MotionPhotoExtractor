@@ -80,7 +80,7 @@ You'll see a few lines of output ending in `Successfully installed motionextract
 motionextract --version
 ```
 
-You should see `motionextract 2.1.0` (or higher).
+You should see `motionextract 2.2.0` (or higher).
 
 If you get "not recognized" on Windows, don't worry — the tool installed fine,
 Windows just can't see it yet. This always works instead:
@@ -371,6 +371,20 @@ share a filename, and `-r` puts all the videos in one place.
 2025-Wedding\PXL_20240101_120000.MP.jpg  →  PXL_20240101_120000.MP_video_2.mp4
 ```
 
+## All options
+
+| Option | Short | What it does |
+|---|---|---|
+| `--output DIR` | `-o` | Where to save videos. `-o same` puts them beside the originals. Default: an `extracted_videos/` subfolder |
+| `--recursive` | `-r` | Include subfolders |
+| `--overwrite` | | Re-extract photos that already have a video, replacing it |
+| `--dry-run` | | Report what would happen and write nothing |
+| `--version` | | Print the version |
+| `--help` | `-h` | Show all of this in the terminal |
+
+The path to work on comes first and is optional — with nothing given, it uses
+the folder you're currently in.
+
 ## Exit codes
 
 For anyone scripting against it.
@@ -389,7 +403,7 @@ Detected automatically — you don't need to know which kind you have.
 |--------|-------------|
 | **New** (Pixel 6+) | Reads `GCamera:MotionPhoto` + `Container:Directory` from XMP metadata |
 | **Old** (earlier Pixels) | Reads the `MicroVideoOffset` attribute from XMP metadata |
-| **Fallback** | Scans backward for MP4 box markers (`ftyp` / `moov` / `mdat`) |
+| **Fallback** | Finds the last `ftyp` box, where an MP4 begins. Used when the XMP is missing or unreadable |
 
 `.trashed-` prefixed files, which Android creates for deleted photos copied over USB, extract normally.
 
