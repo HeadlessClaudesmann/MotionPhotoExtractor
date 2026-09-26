@@ -20,7 +20,8 @@ from .core import (
     claim_output_path,
     collect_jpegs,
     extract_to,
-    find_video,
+    output_dir_for,
+    probe_video_in_file,
 )
 
 DEFAULT_OUTPUT_DIRNAME = 'extracted_videos'
@@ -64,6 +65,7 @@ def _build_parser() -> argparse.ArgumentParser:
             '  motionextract -r                  current folder and subfolders\n'
             '  motionextract photo.jpg           one file\n'
             '  motionextract ~/Photos            a specific folder\n'
+            '  motionextract -r --tree           subfolders, mirrored in the output\n'
             '  motionextract -o same             save next to the originals\n'
             '  motionextract --dry-run           report what would happen, write nothing\n'
             '  motionextract --overwrite         re-extract everything from scratch\n'
@@ -80,6 +82,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         '--recursive', '-r', action='store_true',
         help='include subfolders')
+    parser.add_argument(
+        '--tree', action='store_true',
+        help='mirror the source folder structure in the output instead of '
+             'putting every video in one folder (use with -r)')
     parser.add_argument(
         '--overwrite', action='store_true',
         help='re-extract photos whose video is already present, replacing it '
@@ -120,20 +126,23 @@ def main(argv: list[str] | None = None) -> int:
     scope = ' (including subfolders)' if args.recursive else ''
     print(f'[>>] {len(jpegs)} JPEG(s) found in {target}{scope}')
     print(f'[>>] output: {output_dir}')
+    if args.tree:
+        print('[>>] mirroring the source folder structure')
     if args.dry_run:
         print('[>>] dry run, nothing will be written')
     if args.overwrite:
         print('[>>] overwrite: existing videos will be replaced')
     print()
 
-    # How many photos of each stem we have seen, so that two photos sharing a
-    # filename in a recursive run are told apart from work already finished.
+    # How many photos have claimed each destination, so that two photos sharing
+    # a filename in a recursive run are told apart from work already finished.
     seen: dict[str, int] = {}
     extracted = skipped = already = failed = 0
 
     for jpeg in jpegs:
         try:
-            dest, already_done = claim_output_path(output_dir, jpeg.stem, seen)
+            dest_dir = output_dir_for(jpeg, source_dir, output_dir, args.tree)
+            dest, already_done = claim_output_path(dest_dir, jpeg.stem, seen)
 
             if already_done and not args.overwrite:
                 already += 1
@@ -141,14 +150,14 @@ def main(argv: list[str] | None = None) -> int:
                 continue
 
             if args.dry_run:
-                found = find_video(jpeg.read_bytes())
-                if found is None:
+                size = probe_video_in_file(jpeg)
+                if size is None:
                     skipped += 1
                     print(f'  [--] {jpeg.name}')
                 else:
                     extracted += 1
                     print(f'  [OK] {jpeg.name}  ->  would write {dest.name}  '
-                          f'({len(found) / 1_048_576:.1f} MB)')
+                          f'({size / 1_048_576:.1f} MB)')
                 continue
 
             written = extract_to(jpeg, dest)

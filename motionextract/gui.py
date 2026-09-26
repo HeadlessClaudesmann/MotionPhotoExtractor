@@ -23,6 +23,7 @@ from .core import (
     claim_output_path,
     collect_jpegs,
     extract_to,
+    output_dir_for,
 )
 
 DEFAULT_OUTPUT_DIRNAME = 'extracted_videos'
@@ -71,7 +72,10 @@ def _open_playlist(paths: list[Path]) -> None:
 # Background worker
 # ---------------------------------------------------------------------------
 
-def _worker(source: Path, output_dir: Path, recursive: bool, log_q: queue.Queue) -> None:
+def _worker(
+    source: Path, output_dir: Path, recursive: bool, mirror: bool,
+    log_q: queue.Queue,
+) -> None:
     """
     Runs extraction off the main thread, reporting (tag, payload) via log_q.
     Tags: ok, skip, warn, info, done. The 'done' payload is list[Path].
@@ -92,15 +96,18 @@ def _worker(source: Path, output_dir: Path, recursive: bool, log_q: queue.Queue)
 
     log_q.put(('info', f'{len(jpegs)} JPEG(s) found\n'))
 
+    source_dir = source if source.is_dir() else source.parent
+
     extracted: list[Path] = []
-    # How many photos of each stem we have seen, so that two photos sharing a
-    # filename in a recursive run are told apart from work already finished.
+    # How many photos have claimed each destination, so that two photos sharing
+    # a filename in a recursive run are told apart from work already finished.
     seen: dict[str, int] = {}
     skipped = already = failed = 0
 
     for jpeg in jpegs:
         try:
-            dest, already_done = claim_output_path(output_dir, jpeg.stem, seen)
+            dest_dir = output_dir_for(jpeg, source_dir, output_dir, mirror)
+            dest, already_done = claim_output_path(dest_dir, jpeg.stem, seen)
 
             if already_done:
                 already += 1
@@ -172,6 +179,10 @@ class App(tk.Tk):
         ttk.Checkbutton(
             ctrl_frame, text='Include subfolders', variable=self._recursive_var,
         ).pack(side='left')
+        self._mirror_var = tk.BooleanVar()
+        ttk.Checkbutton(
+            ctrl_frame, text='Mirror folder structure', variable=self._mirror_var,
+        ).pack(side='left', padx=(12, 0))
         self._extract_btn = ttk.Button(
             ctrl_frame, text='Extract', command=self._start_extraction)
         self._extract_btn.pack(side='right')
@@ -236,7 +247,8 @@ class App(tk.Tk):
 
         threading.Thread(
             target=_worker,
-            args=(source, output_dir, self._recursive_var.get(), self._log_q),
+            args=(source, output_dir, self._recursive_var.get(),
+                  self._mirror_var.get(), self._log_q),
             daemon=True,
         ).start()
 

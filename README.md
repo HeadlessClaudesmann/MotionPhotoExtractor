@@ -80,7 +80,7 @@ You'll see a few lines of output ending in `Successfully installed motionextract
 motionextract --version
 ```
 
-You should see `motionextract 2.2.0` (or higher).
+You should see `motionextract 2.3.0` (or higher).
 
 If you get "not recognized" on Windows, don't worry — the tool installed fine,
 Windows just can't see it yet. This always works instead:
@@ -114,6 +114,10 @@ motionextract
 That's it. Videos land in a new `extracted_videos` folder right there.
 
 > **Tip for Windows:** you can skip the typing. Open the photo folder in File Explorer, then in the address bar at the top type `powershell` and press Enter. A terminal opens already in that folder — just type `motionextract`.
+
+**Prefer clicking to typing?** There's a windowed version too — run
+`motionextract-gui` instead. Folder pickers, a progress log, and a button to
+play the results in VLC. See [The GUI](#the-gui).
 
 ---
 
@@ -154,6 +158,7 @@ Run these from inside your photo folder.
 |---|---|
 | Extract from this folder | `motionextract` |
 | Include subfolders too | `motionextract -r` |
+| Subfolders, keeping the folder layout | `motionextract -r --tree` |
 | Preview without changing anything | `motionextract --dry-run` |
 | A different folder | `motionextract "C:\Users\dave\Pictures"` |
 | Just one photo | `motionextract photo.jpg` |
@@ -161,6 +166,7 @@ Run these from inside your photo folder.
 | Save videos next to the photos | `motionextract -o same` |
 | Re-extract everything from scratch | `motionextract --overwrite` |
 | Full list of options | `motionextract --help` |
+| Open the windowed version | `motionextract-gui` |
 
 **Not sure what it'll do?** Run `motionextract --dry-run` first. It reports exactly what it would extract and writes nothing at all.
 
@@ -172,6 +178,7 @@ Run these from inside your photo folder.
 - **Running it again is cheap.** Photos it has already extracted are skipped, so after adding a few new shots you can just run it again and only the new ones get done. Use `--overwrite` if you want it to redo everything.
 - **Only `.jpg` and `.jpeg` files are touched.** Everything else in the folder is left alone.
 - **Quality is untouched.** The clip is copied out exactly as your phone recorded it. No re-encoding.
+- **It only reads the parts it needs.** The metadata says where the video starts, so the photo data in between is never pulled off the disk. Worth noticing if your photos are on an external drive, a memory card, or still on the phone over USB — `--dry-run` in particular reads almost nothing.
 
 ---
 
@@ -371,12 +378,30 @@ share a filename, and `-r` puts all the videos in one place.
 2025-Wedding\PXL_20240101_120000.MP.jpg  →  PXL_20240101_120000.MP_video_2.mp4
 ```
 
+### Keeping your folder layout
+
+Add `--tree` and the output mirrors the folders the photos came from, which
+avoids the `_2` suffix altogether — each video keeps its own name because it
+keeps its own folder:
+
+```
+> motionextract -r --tree
+
+extracted_videos\
+  2024-Holiday\PXL_20240101_120000.MP_video.mp4
+  2025-Wedding\PXL_20240101_120000.MP_video.mp4
+```
+
+This is worth using if you care which folder a video came from. Flat is still
+the default, so existing output folders keep working as they are.
+
 ## All options
 
 | Option | Short | What it does |
 |---|---|---|
 | `--output DIR` | `-o` | Where to save videos. `-o same` puts them beside the originals. Default: an `extracted_videos/` subfolder |
 | `--recursive` | `-r` | Include subfolders |
+| `--tree` | | Mirror the source folder layout in the output instead of putting every video in one folder. Use with `-r` |
 | `--overwrite` | | Re-extract photos that already have a video, replacing it |
 | `--dry-run` | | Report what would happen and write nothing |
 | `--version` | | Print the version |
@@ -409,13 +434,32 @@ Detected automatically — you don't need to know which kind you have.
 
 ## The GUI
 
-There's also a windowed version with folder pickers, a live progress log, and a "play them all in VLC" button:
+There's a windowed version if you'd rather not use the terminal. It installs
+alongside the command, so you already have it:
 
 ```
 motionextract-gui
 ```
 
-It shares the same extraction engine. The command line version is the better-tested of the two.
+If Windows says it isn't recognised, it's the same PATH situation as the main
+command — this always works instead:
+
+```powershell
+py -m motionextract.gui
+```
+
+What it gives you:
+
+- Folder pickers for the photos and the output, so no typing paths
+- **Include subfolders** and **Mirror folder structure** tick boxes, matching `-r` and `--tree`
+- A live progress log using the same `[OK]` / `[--]` / `[==]` prefixes
+- Buttons to preview the last clip, or open all of them in VLC
+
+It shares the same extraction engine, so it finds exactly what the command line
+finds and skips already-extracted photos the same way. The command line version
+is the better-tested of the two, and the only one with `--dry-run` and
+`--overwrite`. Tkinter comes with Python, so this still needs no extra
+downloads.
 
 ## Running without installing
 

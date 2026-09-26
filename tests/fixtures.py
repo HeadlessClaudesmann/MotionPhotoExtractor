@@ -35,7 +35,7 @@ def _jpeg_body(size: int = 2048) -> bytes:
     return b'\x00' * size
 
 
-def new_format(video: bytes) -> bytes:
+def new_format(video: bytes, body_size: int = 2048) -> bytes:
     """GCamera:MotionPhoto with a Container:Directory listing the clip."""
     xmp = (
         b'<x:xmpmeta xmlns:GCamera="http://ns.google.com/photos/1.0/camera/"\n'
@@ -48,23 +48,23 @@ def new_format(video: bytes) -> bytes:
         b' </Container:Directory>\n'
         b'</x:xmpmeta>'
     )
-    return JPEG_HEAD + xmp + _jpeg_body() + JPEG_TAIL + video
+    return JPEG_HEAD + xmp + _jpeg_body(body_size) + JPEG_TAIL + video
 
 
-def old_format(video: bytes) -> bytes:
+def old_format(video: bytes, body_size: int = 2048) -> bytes:
     """Older firmware: a single MicroVideoOffset counted back from EOF."""
     xmp = (
         b'<x:xmpmeta xmlns:GCamera="http://ns.google.com/photos/1.0/camera/"\n'
         b'  GCamera:MicroVideo="1" GCamera:MicroVideoOffset="'
         + str(len(video)).encode() + b'"/>'
     )
-    return JPEG_HEAD + xmp + _jpeg_body() + JPEG_TAIL + video
+    return JPEG_HEAD + xmp + _jpeg_body(body_size) + JPEG_TAIL + video
 
 
-def fallback_only(video: bytes) -> bytes:
+def fallback_only(video: bytes, body_size: int = 2048) -> bytes:
     """Markers present, but nothing that gives an offset -- forces the scan."""
     xmp = b'<x:xmpmeta>GCamera:MotionPhoto="1" but no container directory</x:xmpmeta>'
-    return JPEG_HEAD + xmp + _jpeg_body() + JPEG_TAIL + video
+    return JPEG_HEAD + xmp + _jpeg_body(body_size) + JPEG_TAIL + video
 
 
 def plain_jpeg() -> bytes:

@@ -114,6 +114,88 @@ class TestRecursiveCollisions(CLITestCase):
         self.assertIn('2 already extracted', out)
 
 
+class TestMirroredTree(CLITestCase):
+    """
+    --tree recreates the source layout in the output, which keeps photos from
+    different folders apart and so removes the need for a _2 suffix at all.
+    """
+
+    def mirrored(self) -> list[str]:
+        out = self.root / 'extracted_videos'
+        return sorted(
+            str(p.relative_to(out)) for p in out.rglob('*.mp4')
+        ) if out.exists() else []
+
+    def test_subfolders_are_recreated_in_the_output(self) -> None:
+        self.photo('2025-Wedding/PXL_0001.jpg')
+        self.photo('2024-Holiday/PXL_0002.jpg')
+
+        code, _ = run(str(self.root), '-r', '--tree')
+
+        self.assertEqual(code, 0)
+        self.assertEqual(self.mirrored(), [
+            str(Path('2024-Holiday/PXL_0002_video.mp4')),
+            str(Path('2025-Wedding/PXL_0001_video.mp4')),
+        ])
+
+    def test_colliding_names_need_no_suffix_when_mirrored(self) -> None:
+        self.photo('2025-Wedding/PXL_0001.jpg')
+        self.photo('2024-Holiday/PXL_0001.jpg')
+
+        run(str(self.root), '-r', '--tree')
+
+        # Same camera filename, different folders, neither renamed.
+        self.assertEqual(self.mirrored(), [
+            str(Path('2024-Holiday/PXL_0001_video.mp4')),
+            str(Path('2025-Wedding/PXL_0001_video.mp4')),
+        ])
+
+    def test_mirrored_rerun_is_a_no_op(self) -> None:
+        self.photo('2025-Wedding/PXL_0001.jpg')
+        self.photo('2024-Holiday/PXL_0001.jpg')
+
+        run(str(self.root), '-r', '--tree')
+        first = self.mirrored()
+        code, output = run(str(self.root), '-r', '--tree')
+
+        self.assertEqual(code, 0)
+        self.assertEqual(self.mirrored(), first)
+        self.assertIn('2 already extracted', output)
+
+    def test_a_deleted_video_is_the_only_one_refilled(self) -> None:
+        self.photo('2025-Wedding/PXL_0001.jpg')
+        self.photo('2024-Holiday/PXL_0001.jpg')
+        run(str(self.root), '-r', '--tree')
+
+        gone = self.root / 'extracted_videos' / '2024-Holiday' / 'PXL_0001_video.mp4'
+        gone.unlink()
+
+        _, output = run(str(self.root), '-r', '--tree')
+
+        self.assertEqual(output.count('[OK]'), 1)
+        self.assertEqual(output.count('[==]'), 1)
+        self.assertTrue(gone.exists())
+
+    def test_top_level_photos_stay_at_the_top(self) -> None:
+        self.photo('PXL_0001.jpg')
+        self.photo('sub/PXL_0002.jpg')
+
+        run(str(self.root), '-r', '--tree')
+
+        self.assertEqual(self.mirrored(), [
+            'PXL_0001_video.mp4',
+            str(Path('sub/PXL_0002_video.mp4')),
+        ])
+
+    def test_flat_is_still_the_default(self) -> None:
+        self.photo('2025-Wedding/PXL_0001.jpg')
+        self.photo('2024-Holiday/PXL_0001.jpg')
+
+        run(str(self.root), '-r')
+
+        self.assertEqual(self.videos(), ['PXL_0001_video.mp4', 'PXL_0001_video_2.mp4'])
+
+
 class TestReporting(CLITestCase):
     def test_plain_jpeg_is_reported_as_skipped(self) -> None:
         self.photo('plain.jpg', fixtures.plain_jpeg())
