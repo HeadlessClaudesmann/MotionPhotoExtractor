@@ -1,6 +1,6 @@
 # Motion Photo Extractor
 
-Your Pixel phone hides a short video inside its photos. This pulls them out.
+Your phone hides a short video inside its photos. This pulls them out.
 
 ```
 cd Photos
@@ -15,9 +15,11 @@ Point it at a folder, get a folder of MP4s. Your original photos are never touch
 
 ## What is a motion photo?
 
-Pixel phones shoot *motion photos* — a normal-looking JPEG with a 1–3 second MP4 clip silently tucked onto the end of the file. Every app treats it as an ordinary photo, so the video is invisible and effectively stuck in there.
+Most phones can shoot *motion photos* — a normal-looking JPEG with a 1–3 second MP4 clip silently tucked onto the end of the file. Every app treats it as an ordinary photo, so the video is invisible and effectively stuck in there.
 
-This tool finds that clip and saves it as a real MP4 file.
+Each manufacturer calls the feature something different and records it slightly differently. Google calls them Motion Photos, Samsung calls them Motion Photos too, Apple calls them Live Photos, Motorola calls them Active Photos. This tool handles the ones that put the clip inside the JPEG, which is all of the Android ones.
+
+It finds that clip and saves it as a real MP4 file.
 
 ---
 
@@ -100,14 +102,14 @@ Navigate to your photos, then run the command.
 **Windows:**
 
 ```powershell
-cd "$env:USERPROFILE\Pictures\Pixel"
+cd "$env:USERPROFILE\Pictures\Camera"
 motionextract
 ```
 
 **Mac / Linux:**
 
 ```bash
-cd ~/Pictures/Pixel
+cd ~/Pictures/Camera
 motionextract
 ```
 
@@ -127,8 +129,8 @@ play the results in VLC. See [The GUI](#the-gui).
 
 ```
 > motionextract
-[>>] 47 JPEG(s) found in C:\Users\dave\Pictures\Pixel
-[>>] output: C:\Users\dave\Pictures\Pixel\extracted_videos
+[>>] 47 JPEG(s) found in C:\Users\dave\Pictures\Camera
+[>>] output: C:\Users\dave\Pictures\Camera\extracted_videos
 
   [OK] PXL_20251130_140645906.MP.jpg  ->  PXL_20251130_140645906.MP_video.mp4  (2.5 MB)
   [OK] PXL_20251203_184331147.MP.jpg  ->  PXL_20251203_184331147.MP_video.mp4  (1.8 MB)
@@ -178,7 +180,7 @@ Run these from inside your photo folder.
 - **Running it again is cheap.** Photos it has already extracted are skipped, so after adding a few new shots you can just run it again and only the new ones get done. Use `--overwrite` if you want it to redo everything.
 - **Only `.jpg` and `.jpeg` files are touched.** Everything else in the folder is left alone.
 - **Quality is untouched.** The clip is copied out exactly as your phone recorded it. No re-encoding.
-- **It only reads the parts it needs.** The metadata says where the video starts, so the photo data in between is never pulled off the disk. Worth noticing if your photos are on an external drive, a memory card, or still on the phone over USB — `--dry-run` in particular reads almost nothing.
+- **It only reads the parts it needs.** The metadata says where the video starts, so the photo data in between is never pulled off the disk. Extracting a 5.7 MB motion photo reads about 2.1 MB of it — essentially just the clip — and a `--dry-run` over the same file reads under 200 KB, because the size of the clip can be worked out without reading the clip. Ordinary photos with no clip are ruled out in about the same 200 KB. Worth noticing if your photos are on an external drive, a memory card, or still on the phone over USB.
 
 ---
 
@@ -424,13 +426,29 @@ For anyone scripting against it.
 
 Detected automatically — you don't need to know which kind you have.
 
-| Format | How it works |
-|--------|-------------|
-| **New** (Pixel 6+) | Reads `GCamera:MotionPhoto` + `Container:Directory` from XMP metadata |
-| **Old** (earlier Pixels) | Reads the `MicroVideoOffset` attribute from XMP metadata |
-| **Fallback** | Finds the last `ftyp` box, where an MP4 begins. Used when the XMP is missing or unreadable |
+| Format | Used by | How it works |
+|--------|---------|-------------|
+| **Google, new** | Pixel 6+, and most Android makers that copied it | Reads `GCamera:MotionPhoto` + `Container:Directory` from the XMP at the start of the file |
+| **Google, old** | Earlier Pixels | Reads the `MicroVideoOffset` attribute from the same XMP |
+| **Samsung** | Galaxy, newer models | Reads the SEF index Samsung appends to the *end* of the file |
+| **Fallback** | Everything else | Finds the appended MP4 by its own box markers, and follows the box sizes to where the clip ends |
+
+The fallback is what makes an unfamiliar phone work: a photo that doesn't end where a JPEG should is carrying something extra, and a clip is the usual reason. So a manufacturer this tool has never seen still works, as long as it appends the video like the rest of them.
 
 `.trashed-` prefixed files, which Android creates for deleted photos copied over USB, extract normally.
+
+## Which phones
+
+Google Pixel is the one tested against real photos. Samsung Galaxy is supported and covered by tests, but those tests are built from files constructed to match published descriptions of Samsung's format rather than from photos off a Galaxy — so if you have one, a report either way is genuinely useful.
+
+Manufacturers that followed Google's format should work through the same path as a Pixel: Motorola (*Active Photos*), OnePlus (*Live Photos*), Xiaomi, and others. If your phone appends the clip but records the fact some other way entirely, the fallback should still find it. Either way there is nothing to configure — the tool works out which it's looking at.
+
+Two things it can't do:
+
+- **Apple Live Photos** keep the video as a separate `.mov` file next to the `.heic`, so there is nothing embedded to extract. The video is already a file you can play.
+- **Samsung's older Galaxy phones** (roughly S7 to S9) put no index in the file at all, only a marker in front of the clip. Those still extract correctly, but the whole file has to be read to find it, so a folder of them is slower than a folder of Pixel photos.
+
+If you have a phone that isn't on this list and it doesn't work, the file it failed on is the useful thing to report — the layouts here were worked out from files, not from documentation, because most of these formats have never been published.
 
 ## The GUI
 
@@ -495,7 +513,7 @@ explicitly and can be read.
 
 ## Notes for the curious
 
-The extracted MP4 is the raw embedded clip, copied byte for byte — no re-encoding, so no quality loss. It's H.264, which is how the Pixel records it. Producing a genuinely "uncompressed" video would require ffmpeg to transcode, and would balloon a 2 MB clip into hundreds of megabytes.
+The extracted MP4 is the raw embedded clip, copied byte for byte — no re-encoding, so no quality loss. It's H.264, which is how phones record it. Producing a genuinely "uncompressed" video would require ffmpeg to transcode, and would balloon a 2 MB clip into hundreds of megabytes.
 
 ## Licence
 

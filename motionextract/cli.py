@@ -58,7 +58,7 @@ def _resolve_output_dir(raw: str | None, source_dir: Path) -> Path:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog='motionextract',
-        description='Extract the embedded MP4 video from Google Pixel motion photos.',
+        description='Extract the embedded MP4 video from Android motion photos.',
         epilog=(
             'examples:\n'
             '  motionextract                     current folder -> ./extracted_videos\n'

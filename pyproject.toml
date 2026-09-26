@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "motionextract"
 dynamic = ["version"]
-description = "Extract the embedded MP4 video from Google Pixel motion photos."
+description = "Extract the embedded MP4 video from Android motion photos (Pixel, Galaxy and others)."
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
 authors = [{ name = "The Headless Claudesmann", email = "headlessclaudesmann@gmail.com" }]
-keywords = ["pixel", "motion photo", "jpeg", "mp4", "extract", "android"]
+keywords = ["motion photo", "pixel", "samsung", "galaxy", "jpeg", "mp4", "extract", "android"]
 classifiers = [
     "Environment :: Console",
     "Intended Audience :: End Users/Desktop",
